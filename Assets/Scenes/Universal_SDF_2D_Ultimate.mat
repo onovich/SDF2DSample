@@ -13,7 +13,7 @@ Material:
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords:
   - _FIXASPECT_ON
-  - _SHAPE_POLYGON
+  - _SHAPE_STAR
   - _STROKEALIGN_INNER
   - _USEFILL_ON
   - _USESTROKE_ON
@@ -38,8 +38,8 @@ Material:
     - _ColorMask: 15
     - _FixAspect: 1
     - _PolySides: 5.75
-    - _Roundness: 0.054
-    - _Shape: 2
+    - _Roundness: 0
+    - _Shape: 3
     - _Size: 0.5
     - _Smoothness: 0.001
     - _StarInner: 0.628
@@ -52,6 +52,7 @@ Material:
     - _StrokeAlign: 1
     - _StrokeWidth: 0.102
     - _UseFill: 1
+    - _UseMiter: 0
     - _UseStroke: 1
     m_Colors:
     - _Color: {r: 1, g: 1, b: 1, a: 1}

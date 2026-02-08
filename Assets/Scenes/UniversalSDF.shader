@@ -1,4 +1,4 @@
-Shader "Universal/SDF_2D_Ultimate_Fixed_Final_v10"
+Shader "Universal/SDF_2D_Ultimate_Fixed_Final_v11"
 {
     Properties
     {
@@ -7,15 +7,19 @@ Shader "Universal/SDF_2D_Ultimate_Fixed_Final_v10"
         _Color ("Tint", Color) = (1,1,1,1)
         
         [Header(Shape Settings)]
-        [KeywordEnum(Circle, Box, Polygon, Star)] _Shape("Shape Type", Float) = 2
+        [KeywordEnum(Circle, Box, Polygon, Star)] _Shape("Shape Type", Float) = 3
         _Size("Size (Radius)", Range(0, 0.5)) = 0.3
         
-        // ✨ 圆角半径：主要影响外侧尖角
-        _Roundness("Corner Radius", Range(0, 0.2)) = 0.05
+        // ✨ 新增：强制尖角模式
+        // 勾选此项后，_Roundness 将失效，但星星的内角会变得像针一样尖
+        [Toggle] _UseMiter("Force Sharp Corners (Miter)", Float) = 0
+        
+        // 此参数仅在 _UseMiter 关闭时生效
+        _Roundness("Corner Radius (Smooth Mode)", Range(0, 0.2)) = 0.0
 
         [IntegerRange] _PolySides ("Polygon Sides", Range(3, 12)) = 5
-        [IntegerRange] _StarPts ("Star Points", Range(3, 12)) = 5
-        _StarInner ("Star Inner Radius", Range(0.1, 0.95)) = 0.4
+        [IntegerRange] _StarPts ("Star Points", Range(3, 12)) = 8
+        _StarInner ("Star Inner Radius", Range(0.1, 0.95)) = 0.5
 
         [Header(Fill Settings)]
         [Toggle] _UseFill("Use Fill", Float) = 1
@@ -23,15 +27,15 @@ Shader "Universal/SDF_2D_Ultimate_Fixed_Final_v10"
         
         [Header(Stroke Settings)]
         [Toggle] _UseStroke("Use Stroke", Float) = 1
-        [KeywordEnum(Center, Inner, Outer)] _StrokeAlign("Stroke Align", Float) = 2
+        [KeywordEnum(Center, Inner, Outer)] _StrokeAlign("Stroke Align", Float) = 1
         _StrokeColor("Stroke Color", Color) = (1, 1, 1, 1)
-        _StrokeWidth("Stroke Width", Range(0, 0.2)) = 0.02
+        _StrokeWidth("Stroke Width", Range(0, 0.2)) = 0.05
         
         [Header(Render Quality)]
         [Toggle] _FixAspect("Auto Fix Aspect Ratio", Float) = 1
         _AAStrength("Anti-Alias Strength", Range(0.5, 4.0)) = 1.0
 
-        // --- UI Mask Support ---
+        // Mask Support
         [HideInInspector] _StencilComp ("Stencil Comparison", Float) = 8
         [HideInInspector] _Stencil ("Stencil ID", Float) = 0
         [HideInInspector] _StencilOp ("Stencil Operation", Float) = 0
@@ -57,7 +61,7 @@ Shader "Universal/SDF_2D_Ultimate_Fixed_Final_v10"
 
         Pass
         {
-            Name "SDF_2D_Euclidean_v10"
+            Name "SDF_2D_Sharp_v11"
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
@@ -67,6 +71,7 @@ Shader "Universal/SDF_2D_Ultimate_Fixed_Final_v10"
             #pragma shader_feature_local _FIXASPECT_ON
             #pragma shader_feature_local _USEFILL_ON
             #pragma shader_feature_local _USESTROKE_ON
+            #pragma shader_feature_local _USEMITER_ON 
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
@@ -108,10 +113,7 @@ Shader "Universal/SDF_2D_Ultimate_Fixed_Final_v10"
                 return output;
             }
 
-            // ==========================================
-            // 📐 SDF 数学库 (全欧几里得距离修正版)
-            // ==========================================
-
+            // SDF Functions
             float sdCircle(float2 p, float r) { 
                 return length(p) - r; 
             }
@@ -121,36 +123,47 @@ Shader "Universal/SDF_2D_Ultimate_Fixed_Final_v10"
                 return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
             }
 
-            // ✨ 通用星星/多边形逻辑
-            // 这是计算“点到线段距离”的精确算法，支持圆角
+            // ✨ 通用星星/多边形逻辑 (支持 Miter/Sharp 模式)
             float sdStarGeneric(float2 p, float r, float points, float innerRadius) {
-                // 1. 扇形折叠：将空间折叠到一个切片中
+                // 1. 扇形折叠 (坐标系旋转对齐)
                 int n = int(max(3.0, round(points)));
                 float an = PI / float(n);
-                float en = 2.0 * PI / float(n); // 360/n
+                float en = 2.0 * PI / float(n);
                 
-                // 旋转对其，使尖角朝上
                 float a = atan2(p.x, p.y) + an; 
                 float sector = floor(a / en);
                 a -= sector * en;
                 a -= an;
                 p = length(p) * float2(sin(a), cos(a));
                 
-                // 2. 距离计算
-                // 线段端点：p1是外尖角，p2是内拐点
+                // 2. 线段参数
                 p.x = abs(p.x);
                 float2 p1 = float2(0.0, r);
                 float2 p2 = float2(sin(an), cos(an)) * innerRadius;
                 
-                // 计算点p到线段p1-p2的距离向量
                 float2 e = p2 - p1;
                 float2 w = p - p1;
-                float2 d_vec = w - e * clamp(dot(w, e) / dot(e, e), 0.0, 1.0);
-                float d_seg = length(d_vec);
-                
-                // 3. 符号判定 (使用叉积判断内外)
-                float s = w.x * e.y - w.y * e.x;
-                return d_seg * -sign(s); 
+
+                // 3. 计算距离
+                #if _USEMITER_ON
+                    // ✨ 尖角模式 (Miter Mode)
+                    // 利用叉积计算点到无限直线的垂直距离 (Height = Area / Base)
+                    // 这种方式不会产生圆角，等值线是平行的直线
+                    float val = w.x * e.y - w.y * e.x;
+                    float dist = val / length(e);
+                    
+                    // 符号修正：Star SDF 约定内部为负。
+                    // 按照叉积方向，内部可能为正，取反即可。
+                    return -dist; 
+                #else
+                    // ✨ 平滑模式 (Euclidean Mode - 默认)
+                    // 计算点到线段的欧几里得距离
+                    // 这种方式在凹角处会产生圆弧
+                    float2 d_vec = w - e * clamp(dot(w, e) / dot(e, e), 0.0, 1.0);
+                    float d_seg = length(d_vec);
+                    float s = w.x * e.y - w.y * e.x;
+                    return d_seg * -sign(s);
+                #endif
             }
 
             half4 frag(Varyings input) : SV_Target
@@ -167,63 +180,55 @@ Shader "Universal/SDF_2D_Ultimate_Fixed_Final_v10"
 
                 float d = 0;
                 
-                // 🛠️ 预处理：为了防止圆角导致图形膨胀，我们先缩小基础图形
-                // 限制 roundness 不超过 size，否则图形会消失
-                float r_corner = min(_Roundness, _Size - 0.001);
-                float size_geo = _Size - r_corner; 
+                // 逻辑分支：如果开启了 Miter 模式，Roundness 必须忽略 (因为 Miter 不支持圆角)
+                // 否则使用标准的缩小逻辑来支持 Roundness
+                #if _USEMITER_ON
+                    float size_geo = _Size;
+                #else
+                    float r_corner = min(_Roundness, _Size - 0.001);
+                    float size_geo = _Size - r_corner;
+                #endif
 
                 #if defined(_SHAPE_CIRCLE)
-                    // 圆形不受圆角参数影响 (或者说它已经是圆角了)
-                    d = sdCircle(uv, size_geo);
-                    
+                    d = sdCircle(uv, size_geo); // 圆形不受 Miter 影响
                 #elif defined(_SHAPE_BOX)
+                    // Box 在 Miter 模式下其实就是 size_geo，但为了统一代码结构保持不变
+                    // Box 的 SDF 本身就是 Miter 性质的 (直角距离)，所以这里区别不大
                     d = sdBox(uv, float2(size_geo, size_geo));
-                    
                 #elif defined(_SHAPE_POLYGON)
-                    // ✨ 核心修复：
-                    // 正多边形 = 内半径为 r*cos(PI/n) 的星星
-                    // 这样我们可以复用基于线段的精确 SDF，从而支持完美的圆角
                     float an = PI / max(3.0, round(_PolySides));
                     float polyInner = size_geo * cos(an);
                     d = sdStarGeneric(uv, size_geo, _PolySides, polyInner);
-                    
                 #elif defined(_SHAPE_STAR)
-                    // 星星计算
-                    // 注意：Roundness 只能圆润外面的尖角，内部的凹角在数学上无法简单通过减法圆润
                     d = sdStarGeneric(uv, size_geo, _StarPts, size_geo * _StarInner);
                 #endif
 
-                // ✨ 应用圆角
-                // 减去半径 = 向外扩张等值线 = 尖角变圆
-                d -= r_corner;
+                // 只有在非 Miter 模式下，才应用圆角平滑
+                #if !_USEMITER_ON
+                    d -= r_corner;
+                #endif
 
                 half4 finalColor = half4(0,0,0,0);
-                // 自动计算抗锯齿宽度
                 float aa = max(fwidth(d), 0.0001) * _AAStrength;
 
-                // --- 填充渲染 ---
                 #if _USEFILL_ON
                     float fillAlpha = 1.0 - smoothstep(-aa, aa, d);
                     finalColor = _FillColor * fillAlpha;
                 #endif
 
-                // --- 描边渲染 ---
                 #if _USESTROKE_ON
                     float d_stroke = d;
                     float halfWidth = _StrokeWidth * 0.5;
                     
-                    // 对齐修正：改变 stroke 计算的基准线
                     #if defined(_STROKEALIGN_INNER)
-                         d_stroke += halfWidth; // 描边完全在内部
+                         d_stroke += halfWidth;
                     #elif defined(_STROKEALIGN_OUTER)
-                         d_stroke -= halfWidth; // 描边完全在外部
+                         d_stroke -= halfWidth;
                     #endif
                     
-                    // 计算描边（绝对距离 - 半宽）
                     float distToStroke = abs(d_stroke) - halfWidth;
                     float strokeAlpha = 1.0 - smoothstep(-aa, aa, distToStroke);
                     
-                    // 混合颜色
                     finalColor.rgb = lerp(finalColor.rgb, _StrokeColor.rgb, strokeAlpha);
                     finalColor.a = max(finalColor.a, strokeAlpha * _StrokeColor.a);
                 #endif
