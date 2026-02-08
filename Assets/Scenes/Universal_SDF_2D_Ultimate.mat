@@ -13,7 +13,9 @@ Material:
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords:
   - _FIXASPECT_ON
-  - _SHAPE_BOX
+  - _SHAPE_POLYGON
+  - _STROKEALIGN_INNER
+  - _USEFILL_ON
   - _USESTROKE_ON
   m_InvalidKeywords: []
   m_LightmapFlags: 4
@@ -32,18 +34,24 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
+    - _AAStrength: 0.5
     - _ColorMask: 15
     - _FixAspect: 1
-    - _Shape: 1
+    - _PolySides: 5.75
+    - _Roundness: 0.054
+    - _Shape: 2
     - _Size: 0.5
     - _Smoothness: 0.001
+    - _StarInner: 0.628
+    - _StarPts: 8.81
     - _Stencil: 0
     - _StencilComp: 8
     - _StencilOp: 0
     - _StencilReadMask: 255
     - _StencilWriteMask: 255
-    - _StrokeWidth: 0.2
-    - _UseFill: 0
+    - _StrokeAlign: 1
+    - _StrokeWidth: 0.102
+    - _UseFill: 1
     - _UseStroke: 1
     m_Colors:
     - _Color: {r: 1, g: 1, b: 1, a: 1}
