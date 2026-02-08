@@ -1,0 +1,41 @@
+# EditorConfig is awesome: https://EditorConfig.org
+
+# top-most EditorConfig file
+root = true
+
+# 所有文件的通用设置
+[*]
+indent_style = space
+indent_size = 4
+tab_width = 4
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+end_of_line = lf
+
+# C# 文件特定设置 - 修复了节头名称（关键修复）
+[*.{cs,csharp}]
+
+# 大括号样式设置 (K&R风格)
+# 控制语句的大括号在同一行 (if, for, while, etc.)
+csharp_new_line_before_open_brace = none
+
+# 其他大括号相关设置
+csharp_new_line_before_else = false
+csharp_new_line_before_catch = false
+csharp_new_line_before_finally = false
+csharp_new_line_before_members_in_anonymous_types = false
+csharp_new_line_before_members_in_object_initializers = false
+
+# 缩进设置
+csharp_indent_case_contents = true
+csharp_indent_switch_labels = true
+csharp_indent_labels = flush_left
+
+# 空格设置
+csharp_space_after_cast = false
+csharp_space_after_keywords_in_control_flow_statements = true
+csharp_space_between_parentheses = false
+
+# 其他编码风格选项
+csharp_using_directive_placement = inside_namespace
